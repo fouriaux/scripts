@@ -1,0 +1,54 @@
+#!/usr/bin/env nodejs
+
+var shell = require('child_process');
+var fname_regex = /^[^:]*/mg;
+var extern_regex = /extern (?:\"C\"\s*)?(.*)\s*;/;
+var all_externs = {};
+var RED = "\x1b[31m";
+var WHITE = "\x1b[37m";
+var cur_dir = process.cwd();
+var valid_command = (process.argv [2] == "--extern") || (process.argv[2] == "--defs");
+if (! valid_command){
+    console.log ("cclean [--defs | --extern]: quick script to find global definition duplication in C code on current dir");
+    process.exit();
+}
+shell.exec('grep -r extern * | grep -v "extern\\"C\\""', function (err, stdout, stderr) {
+    entries = stdout.split("\n");
+    for (var entry in entries) {
+        var file_name = entries[entry].match(fname_regex);
+        var extern = entries[entry].match(extern_regex);
+        if (file_name[0] && extern && extern[1]) {
+            if (! (extern[1] in all_externs)) {
+                all_externs[extern[1]] = [];
+            }
+            all_externs[extern[1]].push(file_name[0]);
+        }
+    }
+    for (definition in all_externs) {
+        if (process.argv [2] == "--extern") {
+            if (all_externs[definition].length > 1) {
+                console.log (WHITE, "Found multiple extern for " + definition);
+                for (entry in all_externs[definition]) {
+                    var file_name = all_externs[definition][entry].match(fname_regex);
+                    console.log (RED, "         " + file_name);
+                }
+            }
+        } else if (process.argv[2] == "--defs") {
+            var definition_search = 'fgrep -r "' + definition + '" * | grep -v extern';
+            try {
+                var result = shell.execSync(definition_search).toString();
+                if (result) {
+                    var entries = result.split("\n");
+                    if ((entries.length - 1) > 1) {
+                        console.log (WHITE, "Found multiple definitions for " + definition);
+                        console.log (WHITE, definition_search);
+                        for (entry in entries) {
+                            var file_name = entries[entry].match(fname_regex);
+                            console.log (RED, "         " + file_name);
+                        }
+                    }
+                }
+            } catch (err) {}
+        }
+    }
+});
